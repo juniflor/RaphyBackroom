@@ -30,20 +30,20 @@ def pathtube(pts, rad, n=14):
         t = T[k]; u = nz(u - t * np.dot(u, t)); w = np.cross(t, u)
         d = np.cos(ang)[:, None] * u + np.sin(ang)[:, None] * w
         P.append(pts[k] + d * rad[k]); N.append(d)
-    return np.concatenate(P), np.concatenate(N), np.zeros((m * n, 2)), grid(n, m)
+    return np.concatenate(P), np.concatenate(N), np.stack(np.meshgrid(np.linspace(0, 1, n), np.linspace(0, 1, m)), -1).reshape(-1, 2), grid(n, m)
 def tube(p0, p1, r0, r1, n=14): return pathtube([p0, p1], [r0, r1], n)
 def box(c, s, R=None):
-    h = A(s, float) / 2; P = []; N = []; I = []
+    h = A(s, float) / 2; P = []; N = []; I = []; UV = []
     for ax in range(3):
         for sg in (-1, 1):
             n = np.zeros(3); n[ax] = sg; u = np.zeros(3); u[(ax + 1) % 3] = 1; v = np.zeros(3); v[(ax + 2) % 3] = 1
             f = n * h; q = A([f - u * h - v * h, f + u * h - v * h, f + u * h + v * h, f - u * h + v * h])
             b = 4 * len(P); tri = [[0, 1, 2], [0, 2, 3]]
             if np.dot(np.cross(q[1] - q[0], q[2] - q[0]), n) < 0: tri = [[0, 2, 1], [0, 3, 2]]
-            P.append(q); N.append(np.tile(n, (4, 1))); I.append(A(tri) + b)
+            P.append(q); N.append(np.tile(n, (4, 1))); I.append(A(tri) + b); UV.append(A([[0, 0], [1, 0], [1, 1], [0, 1]]))
     P = np.concatenate(P); N = np.concatenate(N); I = np.concatenate(I)
     if R is not None: P = P @ R.T; N = N @ R.T
-    return P + A(c, float), N, np.zeros((len(P), 2)), I
+    return P + A(c, float), N, np.concatenate(UV), I
 def lathe(prof, n=32):
     """profile list of (radius, y) going bottom-center -> outside -> up -> top-center"""
     prof = A(prof, float); m = len(prof); ang = np.linspace(0, 2 * np.pi, n); P = []; N = []
@@ -51,7 +51,7 @@ def lathe(prof, n=32):
         r, y = prof[k]; a, b = prof[max(k - 1, 0)], prof[min(k + 1, m - 1)]
         nr, ny = b[1] - a[1], -(b[0] - a[0]); l = math.hypot(nr, ny) or 1; nr /= l; ny /= l
         for t in ang: P.append([r * math.cos(t), y, r * math.sin(t)]); N.append([nr * math.cos(t), ny, nr * math.sin(t)])
-    return A(P), A(N), np.zeros((len(P), 2)), grid(n, m)
+    return A(P), A(N), np.stack(np.meshgrid(np.linspace(0, 1, n), np.linspace(0, 1, m)), -1).reshape(-1, 2), grid(n, m)
 
 # ---------- scene graph + GLB writer ----------
 class Geo:
@@ -205,7 +205,7 @@ def environment():
     mat('locker_metal', 0x4a5560, .45, .6); mat('locker_dark', 0x3a4550, .5, .6); mat('handle', 0x9a9a9a, .3, .9)
     mat('wood', 0x6a4a28, .85); mat('wood_dark', 0x5a3a1c, .8); mat('brass', 0xb08a3a, .3, .9)
     mat('crate_wood', 0x6b4f2a, .9); mat('crate_dark', 0x4a361c, .9); mat('barrel_metal', 0x3a4a4a, .5, .5); mat('hoop', 0x2a2a2a, .6, .6)
-    mat('fixture', 0x808080, .6, .4); mat('light_panel', 0x201a08, .5, 0, (0xffe9a0, .3))
+    mat('trim', 0xcfc79a, .8); mat('vent_m', 0x555555, .5, .7); mat('black', 0x15151a, .5); mat('cab', 0x6a7070, .5, .6); mat('fixture', 0x808080, .6, .4); mat('light_panel', 0x201a08, .5, 0, (0xffe9a0, .3))
     roots = []
     lk = Node('locker')
     lk.add('locker_metal', box((0, 2.17, 0), (.9, .06, .9))); lk.add('locker_metal', box((0, .03, 0), (.9, .06, .9)))
@@ -213,8 +213,9 @@ def environment():
     lk.add('locker_dark', box((0, 1.5, -.3), (.78, .03, .26))); lk.add('handle', tube((-.3, 1.95, -.38), (.3, 1.95, -.38), .012, .012, 8))
     for x in (-.25, 0, .25): lk.add('handle', tube((x, 1.95, -.38), (x, 1.95, -.3), .01, .01, 8))
     dr = lk.child(Node('Door', (-.45, 1.1, .45)))
-    dr.add('locker_dark', box((.42, 0, 0), (.84, 2.1, .04)))
-    for v in range(6): dr.add('locker_metal', box((.42, .62 + v * .1, .035), (.5, .025, .03), Rx(-.5)))
+    for b in (box((.04, 0, 0), (.08, 2.1, .04)), box((.8, 0, 0), (.08, 2.1, .04)), box((.42, 1.03, 0), (.84, .08, .04)), box((.42, -1.03, 0), (.84, .08, .04)), box((.42, .02, 0), (.76, .06, .04)), box((.42, -.5, 0), (.76, .94, .03))): dr.add('locker_dark', b)
+    for v in range(9): dr.add('locker_metal', box((.42, .12 + v * .105, .0), (.74, .06, .012), Rx(-.75)))
+    for v in range(3): dr.add('locker_metal', box((.42, -.95 + v * .1, .0), (.74, .05, .012), Rx(-.75)))
     dr.add('handle', box((.74, 0, .045), (.04, .17, .04))); dr.add('handle', box((.42, .3, .03), (.16, .06, .01)))
     for k in range(3): dr.add('handle', tube((-.0, -.8 + k * .8, .0), (.0, -.7 + k * .8, .0), .02, .02, 10))
     roots.append(lk)
@@ -239,6 +240,22 @@ def environment():
     roots.append(br)
     cl = Node('ceilinglight'); cl.add('fixture', box((0, -.025, 0), (1.0, .05, 1.0))); cl.add('light_panel', box((0, -.055, 0), (.9, .02, .9)))
     roots.append(cl)
+    tr = Node('trim')
+    for b in (box((0, .07, .0125), (1, .14, .025)), box((0, .15, .015), (1, .02, .03)), box((0, 3.12, .015), (1, .1, .03)), box((0, 3.05, .01), (1, .03, .02))): tr.add('trim', b)
+    roots.append(tr)
+    vt = Node('vent'); vt.add('vent_m', box((0, 2.6, .01), (.42, .28, .02)))
+    for v in range(6): vt.add('hoop', box((0, 2.5 + v * .04, .022), (.36, .015, .01)))
+    roots.append(vt)
+    ot = Node('outlet'); ot.add('trim', box((0, .4, .006), (.08, .12, .012)))
+    for dy in (-.03, .03): ot.add('hoop', box((0, .4 + dy, .013), (.03, .015, .004)))
+    roots.append(ot)
+    cb = Node('cabinet'); cb.add('cab', box((0, .5, 0), (.96, 1, .96)))
+    for k in range(3): cb.add('locker_dark', box((0, .17 + k * .33, .485), (.88, .28, .02))); cb.add('handle', box((0, .22 + k * .33, .5), (.3, .03, .03)))
+    roots.append(cb)
+    ch = Node('chair'); ch.add('black', box((0, .5, 0), (.7, .1, .7))); ch.add('black', box((0, .85, -.32), (.7, .6, .08), Rx(-.15))); ch.add('handle', tube((0, .45, 0), (0, .12, 0), .04, .04, 10))
+    for a in range(5):
+        t = a * 2 * math.pi / 5; ch.add('handle', tube((0, .12, 0), (math.cos(t) * .38, .06, math.sin(t) * .38), .03, .025, 8)); ch.add('black', ball((math.cos(t) * .38, .04, math.sin(t) * .38), .04))
+    roots.append(ch)
     write_glb('models/environment.glb', roots)
 
 if __name__ == '__main__':
