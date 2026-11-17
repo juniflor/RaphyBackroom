@@ -25,3 +25,8 @@ Import any of them in Blender (File > Import > glTF 2.0), edit, and export over 
 - environment: locker (with a `Door` child), table, crate, barrel, ceilinglight
 
 Serve over http (`python3 -m http.server`) or GitHub Pages; opening index.html from disk blocks model loading and the game falls back to its built-in shapes.
+
+Environment also has `trim`, `vent`, `outlet` (wall decoration), `cabinet` and `chair`. Item and wall textures are painted in code (see `PAINT` in index.html) onto materials by name.
+
+## Phone
+Open the Pages link on a phone (landscape works best). Left stick moves, drag the right side to look; buttons: JUMP (also BREATHE while hiding), RUN (hold), CROUCH (slide while running), HIDE, LIGHT, and the five item buttons. Add `?touch` to the URL to force touch controls on any device.
